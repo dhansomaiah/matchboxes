@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Matchboxes</title>
+<meta name="description" content="A noughts and crosses opponent made of 304 matchboxes. It knows nothing and learns by losing to you.">
+<style>
+  :root {
+    --paper: #f4eee0;
+    --ink: #231f1b;
+    --ink-2: #5d564d;
+    --ink-3: #8b8377;
+    --rule: rgba(35, 31, 27, 0.14);
+    --teal: #0f6e70;
+    --pink: #d63a72;
+    --orange: #dd7a2e;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 17px/1.55 var(--serif);
+  }
+  main { max-width: 1040px; margin: 0 auto; padding: 56px 24px 72px; }
+  h1 { font-size: 44px; line-height: 1.1; font-weight: 400; letter-spacing: -0.01em; margin: 0 0 12px; }
+  h2 { font-size: 20px; line-height: 1.3; font-weight: 400; margin: 0 0 4px; }
+  p { margin: 0; }
+  .lede { max-width: 620px; color: var(--ink-2); font-size: 19px; }
+  .note { color: var(--ink-2); font-size: 15px; line-height: 1.5; }
+  .fig { font-family: var(--mono); font-size: 0.86em; font-variant-numeric: tabular-nums; }
+
+  .table { display: grid; grid-template-columns: 372px 1fr; gap: 56px; margin-top: 48px; align-items: start; }
+
+  /* The board you play on: ruled lines, no boxes. */
+  .board { display: grid; grid-template-columns: repeat(3, 124px); width: 372px; }
+  .cell {
+    width: 124px; height: 124px; padding: 0; border: 0; background: none; color: inherit;
+    display: grid; place-items: center; cursor: default;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .cell:nth-child(3n+2) { border-left: 2px solid var(--ink); border-right: 2px solid var(--ink); }
+  .cell:nth-child(n+4):nth-child(-n+6) { border-top: 2px solid var(--ink); border-bottom: 2px solid var(--ink); }
+  .board.yours .cell.empty { cursor: pointer; }
+  .board.yours .cell.empty:hover::after {
+    content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--pink); opacity: 0.35;
+  }
+  .cell:focus-visible { outline: 2px solid var(--pink); outline-offset: -8px; }
+  .cell svg { width: 68px; height: 68px; fill: none; stroke-width: 7; stroke-linecap: round; }
+  .cell .o { stroke: var(--teal); }
+  .cell .x { stroke: var(--pink); }
+  .cell.dim svg { opacity: 0.28; }
+  .cell.new svg { animation: land 180ms ease-out; }
+  @keyframes land { from { transform: scale(0.8); opacity: 0; } }
+
+  .status { margin-top: 24px; min-height: 84px; }
+  .status .say { font-size: 20px; line-height: 1.35; }
+  .status .why { color: var(--ink-2); font-size: 15px; margin-top: 4px; }
+  button.again {
+    margin-top: 16px; height: 40px; padding: 0 20px; border-radius: 20px; border: 0;
+    background: var(--ink); color: var(--paper); font: 400 16px var(--serif); cursor: pointer;
+  }
+  button.again:hover { background: #000; }
+  button.again:focus-visible, button.quiet:focus-visible, .drawer:focus-visible { outline: 2px solid var(--pink); outline-offset: 2px; }
+  button.quiet {
+    border: 0; background: none; padding: 0; color: var(--ink-2); font: 400 15px var(--serif);
+    text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+  }
+  button.quiet:hover { color: var(--ink); }
+
+  /* The boxes it opened this game. */
+  .opened { display: grid; grid-template-columns: repeat(2, 196px); gap: 28px 40px; margin-top: 20px; min-height: 240px; }
+  .box .label { font-size: 15px; color: var(--ink-2); margin-bottom: 8px; display: flex; justify-content: space-between; }
+  .box .label .gain { color: var(--teal); }
+  .box .label .lose { color: var(--orange); }
+  .mini { display: grid; grid-template-columns: repeat(3, 64px); width: 192px; }
+  .mini > div { width: 64px; height: 64px; display: grid; place-items: center; position: relative; }
+  .mini > div:nth-child(3n+2) { border-left: 1px solid var(--ink-3); border-right: 1px solid var(--ink-3); }
+  .mini > div:nth-child(n+4):nth-child(-n+6) { border-top: 1px solid var(--ink-3); border-bottom: 1px solid var(--ink-3); }
+  .mini svg { width: 28px; height: 28px; fill: none; stroke-width: 9; stroke-linecap: round; opacity: 0.55; }
+  .mini .o { stroke: var(--teal); }
+  .mini .x { stroke: var(--pink); }
+  .beads { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; align-content: center; width: 48px; }
+  .bead { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); }
+  .picked .bead { background: var(--orange); }
+  .picked::before { content: ""; position: absolute; inset: 4px; border: 1.5px solid var(--orange); border-radius: 10px; }
+  .count { position: absolute; right: 4px; bottom: 1px; font: 11px var(--mono); color: var(--ink-2); }
+  .none { font: 11px var(--mono); color: var(--ink-3); }
+  .waiting { color: var(--ink-3); font-size: 15px; grid-column: 1 / -1; }
+
+  section { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--rule); }
+  .head { display: flex; justify-content: space-between; align-items: baseline; gap: 24px; flex-wrap: wrap; }
+
+  /* All 304 of them. */
+  .shelf { display: grid; grid-template-columns: 132px 1fr; gap: 12px 16px; margin-top: 24px; align-items: start; }
+  .shelf .which { font-size: 15px; color: var(--ink-2); line-height: 16px; }
+  .drawers { display: flex; flex-wrap: wrap; gap: 4px; }
+  .drawer {
+    width: 16px; height: 16px; padding: 0; border-radius: 2px; cursor: pointer;
+    border: 1px solid rgba(35, 31, 27, 0.3); background: transparent;
+  }
+  .drawer:hover { border-color: var(--ink); }
+  .drawer.used { box-shadow: 0 0 0 2px var(--paper), 0 0 0 3.5px var(--ink); }
+  .drawer.peek { border-color: var(--ink); border-width: 2px; }
+  .key { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 20px; font-size: 15px; color: var(--ink-2); }
+  .key span { display: inline-flex; align-items: center; gap: 8px; }
+  .key i { width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(35, 31, 27, 0.3); display: inline-block; }
+  .peeked { margin-top: 28px; display: flex; gap: 28px; align-items: center; min-height: 192px; }
+  .peeked .note { max-width: 420px; }
+
+  /* The record: one bead per game. */
+  .games { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 20px; min-height: 12px; }
+  .games i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  .games .w { background: var(--teal); }
+  .games .l { background: var(--pink); }
+  .games .d { border: 2px solid var(--ink-3); }
+  .tally { margin-top: 16px; display: flex; gap: 32px; flex-wrap: wrap; font-size: 15px; color: var(--ink-2); }
+  .tally b { font: 400 22px var(--mono); color: var(--ink); display: block; font-variant-numeric: tabular-nums; }
+
+  .how p { max-width: 620px; }
+  .how h2 { margin-bottom: 8px; }
+  .how p + p { margin-top: 12px; }
+  .how a { color: inherit; text-underline-offset: 3px; }
+
+  @media (max-width: 900px) {
+    .table { grid-template-columns: 1fr; gap: 40px; }
+  }
+  @media (max-width: 440px) {
+    main { padding: 40px 16px 56px; }
+    h1 { font-size: 36px; }
+    .board { grid-template-columns: repeat(3, 104px); width: 312px; }
+    .cell { width: 104px; height: 104px; }
+    .cell svg { width: 56px; height: 56px; }
+    .opened { grid-template-columns: 1fr; }
+    .shelf { grid-template-columns: 1fr; }
+    .peeked { flex-direction: column; align-items: flex-start; }
+  }
+  @media (prefers-reduced-motion: reduce) { .cell.new svg { animation: none; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Matchboxes</h1>
+  <p class="lede">A noughts and crosses opponent that knows nothing. It has 304 matchboxes of beads and learns by losing to you.</p>
+
+  <div class="table">
+    <div>
+      <div class="board" id="board" role="group" aria-label="The board"></div>
+      <div class="status" aria-live="polite">
+        <p class="say" id="say"></p>
+        <p class="why" id="why"></p>
+        <button class="again" id="again" hidden>Play again</button>
+      </div>
+    </div>
+    <div>
+      <h2>Boxes it opened this game</h2>
+      <p class="note">Each bead is a vote for a square. It shakes the box and plays whichever bead falls out.</p>
+      <div class="opened" id="opened"></div>
+    </div>
+  </div>
+
+  <section>
+    <div class="head">
+      <h2>All 304 boxes</h2>
+      <p class="note">One for every position it can be asked about. Pick one to look inside.</p>
+    </div>
+    <div class="shelf" id="shelf"></div>
+    <div class="key">
+      <span><i></i>Untouched</span>
+      <span><i style="background: var(--teal); border-color: var(--teal)"></i>Gained beads</span>
+      <span><i style="background: var(--orange); border-color: var(--orange)"></i>Lost beads</span>
+      <span><i style="box-shadow: 0 0 0 2px var(--paper), 0 0 0 3.5px var(--ink); border-color: transparent"></i>Opened this game</span>
+    </div>
+    <div class="peeked" id="peeked" hidden></div>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>Its record against you</h2>
+      <button class="quiet" id="forget">Empty its memory</button>
+    </div>
+    <div class="games" id="games" aria-hidden="true"></div>
+    <div class="tally">
+      <span><b id="t-games">0</b>games</span>
+      <span><b id="t-lost">0</b>you won</span>
+      <span><b id="t-drew">0</b>drawn</span>
+      <span><b id="t-won">0</b>it won</span>
+    </div>
+  </section>
+
+  <section class="how">
+    <h2>How it works</h2>
+    <p>There is no strategy in the code. When it wins, every move it made gets three more beads. A draw earns one. When it loses, the bead it used in each box is taken away, so that move gets a little less likely next time.</p>
+    <p>Donald Michie built the original in 1961 out of 304 real matchboxes, because he had no computer to hand. Its memory here lives in your browser, so it only ever learns from you.</p>
+  </section>
+</main>
+
+<script src="engine.js"></script>
+<script>
+(function () {
+  const E = Matchboxes;
+  const BOXES = E.allBoxes();
+  const BY_KEY = new Map(BOXES.map((b) => [b.key, b]));
+  const STORE = "matchboxes-v1";
+  const ORDINAL = ["first", "second", "third", "fourth"];
+  const $ = (id) => document.getElementById(id);
+
+  const O_SVG = '<svg viewBox="0 0 60 60" aria-hidden="true"><circle class="o" cx="30" cy="30" r="21"/></svg>';
+  const X_SVG = '<svg viewBox="0 0 60 60" aria-hidden="true"><path class="x" d="M11 11 49 49M49 11 11 49"/></svg>';
+  const PLACES = ["top left", "top middle", "top right", "middle left", "centre", "middle right", "bottom left", "bottom middle", "bottom right"];
+
+  let memory, record, board, opened, over, yours, lastCell, winLine, peekKey, timer;
+
+  function fresh() {
+    const m = {};
+    for (const b of BOXES) m[b.key] = E.freshBeads(b);
+    return m;
+  }
+  function load() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORE));
+      if (saved && saved.memory && BOXES.every((b) => saved.memory[b.key])) {
+        memory = saved.memory; record = saved.record || []; return;
+      }
+    } catch (e) { /* no storage: it just forgets when you leave */ }
+    memory = fresh(); record = [];
+  }
+  function save() {
+    try { localStorage.setItem(STORE, JSON.stringify({ memory, record })); } catch (e) {}
+  }
+
+  const total = (beads) => Object.values(beads).reduce((a, n) => a + n, 0);
+
+  function say(line, why) { $("say").textContent = line; $("why").textContent = why || ""; }
+
+  function start() {
+    clearTimeout(timer);
+    board = "........."; opened = []; over = false; yours = false; lastCell = -1; winLine = null;
+    $("again").hidden = true;
+    say("It goes first", "It always does. You are the crosses.");
+    render();
+    timer = setTimeout(machine, 600);
+  }
+
+  function machine() {
+    if (E.filled(board) === 8) {
+      // One square left, so there is nothing to decide and no box for it.
+      lastCell = board.indexOf(".");
+      board = E.put(board, lastCell, "O");
+      return finish(E.winner(board) ? "win" : "draw");
+    }
+    const pick = E.choose(memory, board);
+    if (!pick) return finish("loss", true);
+    opened.push(pick);
+    lastCell = pick.cell;
+    board = E.put(board, pick.cell, "O");
+    if (E.winner(board)) return finish("win");
+    yours = true;
+    say("Your move", "It took a bead from its " + ORDINAL[opened.length - 1] + " box and played " + PLACES[pick.cell] + ".");
+    render();
+  }
+
+  function you(cell) {
+    if (over || !yours || board[cell] !== ".") return;
+    yours = false; lastCell = cell;
+    board = E.put(board, cell, "X");
+    if (E.winner(board)) return finish("loss");
+    say("It is choosing", "");
+    render();
+    timer = setTimeout(machine, 500);
+  }
+
+  function finish(result, gaveUp) {
+    over = true; yours = false;
+    const w = E.winner(board);
+    winLine = w ? w.line : null;
+    E.learn(memory, opened, result);
+    for (const o of opened) o.result = result;
+    const n = opened.length;
+    const boxes = n === 1 ? "the one box" : "each of the " + n + " boxes";
+    if (gaveUp) {
+      // The box for this position has no beads left. It resigns, and the box is restocked.
+      const key = E.canon(board).key;
+      memory[key] = E.freshBeads(BY_KEY.get(key));
+      say("It gave up", "The box for this position was empty, so it had no move to make. The bead it used in " + boxes + " before that is gone, and the empty box is refilled.");
+    } else if (result === "loss") {
+      say("You won", "The bead it used in " + boxes + " it opened is taken away.");
+    } else if (result === "win") {
+      say("It won", "Three more beads for the move it made in " + boxes + " it opened.");
+    } else {
+      say("A draw", "One more bead for the move it made in " + boxes + " it opened.");
+    }
+    record.push(result === "win" ? "w" : result === "draw" ? "d" : "l");
+    save();
+    $("again").hidden = false;
+    render();
+    $("again").focus({ preventScroll: true });
+  }
+
+  /* Drawing */
+
+  function drawBoard() {
+    const el = $("board");
+    el.className = "board" + (yours ? " yours" : "");
+    el.innerHTML = "";
+    for (let c = 0; c < 9; c++) {
+      const b = document.createElement("button");
+      const v = board[c];
+      b.className = "cell" + (v === "." ? " empty" : "") + (c === lastCell ? " new" : "") +
+        (winLine && !winLine.includes(c) ? " dim" : "");
+      b.innerHTML = v === "O" ? O_SVG : v === "X" ? X_SVG : "";
+      b.setAttribute("aria-label", PLACES[c] + ", " + (v === "O" ? "nought" : v === "X" ? "cross" : "empty"));
+      if (v !== "." || !yours) b.tabIndex = -1;
+      b.addEventListener("click", () => you(c));
+      el.appendChild(b);
+    }
+  }
+
+  // A small board with the beads for one box. k is how the box is turned to match the real game.
+  function mini(key, k, pickedMove) {
+    const beads = memory[key];
+    const cells = new Array(9).fill("");
+    for (let c = 0; c < 9; c++) {
+      const real = E.SYM[k][c];
+      if (key[c] === "O") cells[real] = "<div>" + O_SVG + "</div>";
+      else if (key[c] === "X") cells[real] = "<div>" + X_SVG + "</div>";
+      else if (beads[c] === undefined) cells[real] = "<div></div>";
+      else {
+        const n = beads[c];
+        const dots = '<i class="bead"></i>'.repeat(Math.min(n, 15));
+        cells[real] = '<div class="' + (c === pickedMove ? "picked" : "") + '">' +
+          (n === 0 ? '<span class="none">0</span>' : '<div class="beads">' + dots + "</div>") +
+          (n > 15 ? '<span class="count">' + n + "</span>" : "") + "</div>";
+      }
+    }
+    return '<div class="mini">' + cells.join("") + "</div>";
+  }
+
+  function drawOpened() {
+    const el = $("opened");
+    if (!opened.length) { el.innerHTML = '<p class="waiting">None yet.</p>'; return; }
+    el.innerHTML = opened.map((o, i) => {
+      const d = o.result ? E.REWARD[o.result] : 0;
+      const delta = !o.result ? "" :
+        '<span class="fig ' + (d > 0 ? "gain" : "lose") + '">' + (d > 0 ? "+" + d : "−" + -d) + "</span>";
+      return '<div class="box"><div class="label"><span>Its ' + ORDINAL[i] + " move</span>" + delta + "</div>" +
+        mini(o.key, o.k, o.move) + "</div>";
+    }).join("");
+  }
+
+  function tint(box) {
+    const now = total(memory[box.key]);
+    const was = box.moves.length * E.START[box.stage];
+    if (now === was) return "";
+    if (now > was) return "background: rgba(15,110,112," + Math.min(1, 0.3 + (now - was) / 24).toFixed(2) + "); border-color: var(--teal)";
+    return "background: rgba(221,122,46," + Math.min(1, 0.35 + (was - now) / was).toFixed(2) + "); border-color: var(--orange)";
+  }
+
+  function drawShelf() {
+    const el = $("shelf");
+    const used = new Set(opened.map((o) => o.key));
+    let html = "";
+    for (let s = 0; s < 4; s++) {
+      const row = BOXES.filter((b) => b.stage === s);
+      html += '<div class="which">' + ORDINAL[s][0].toUpperCase() + ORDINAL[s].slice(1) + ' move <span class="fig">' + row.length + "</span></div>" +
+        '<div class="drawers">' + row.map((b) =>
+          '<button class="drawer' + (used.has(b.key) ? " used" : "") + (b.key === peekKey ? " peek" : "") +
+          '" data-key="' + b.key + '" style="' + tint(b) + '" aria-label="A box for its ' + ORDINAL[s] + ' move"></button>').join("") +
+        "</div>";
+    }
+    el.innerHTML = html;
+  }
+
+  function drawPeek() {
+    const el = $("peeked");
+    if (!peekKey) { el.hidden = true; return; }
+    const box = BY_KEY.get(peekKey);
+    const now = total(memory[peekKey]);
+    const was = box.moves.length * E.START[box.stage];
+    const change = now === was ? "It has not learned anything here yet." :
+      now > was ? "It started with " + was + ", so things have gone well from here." :
+      "It started with " + was + ", so it has lost from here.";
+    el.hidden = false;
+    el.innerHTML = mini(peekKey, 0, -1) +
+      '<p class="note">A position it can face on its ' + ORDINAL[box.stage] + ' move. This box holds <span class="fig">' + now + "</span> " +
+      (now === 1 ? "bead" : "beads") + ". " + change + " Squares that mirror each other share one set of beads.</p>";
+  }
+
+  function drawRecord() {
+    $("games").innerHTML = record.map((r) => '<i class="' + r + '"></i>').join("");
+    $("t-games").textContent = record.length;
+    $("t-won").textContent = record.filter((r) => r === "w").length;
+    $("t-drew").textContent = record.filter((r) => r === "d").length;
+    $("t-lost").textContent = record.filter((r) => r === "l").length;
+    $("forget").hidden = record.length === 0;
+  }
+
+  function render() { drawBoard(); drawOpened(); drawShelf(); drawPeek(); drawRecord(); }
+
+  $("again").addEventListener("click", start);
+  $("shelf").addEventListener("click", (e) => {
+    const d = e.target.closest(".drawer");
+    if (!d) return;
+    peekKey = peekKey === d.dataset.key ? null : d.dataset.key;
+    drawShelf(); drawPeek();
+  });
+  $("forget").addEventListener("click", () => {
+    memory = fresh(); record = []; peekKey = null; save(); start();
+  });
+
+  load();
+  start();
+})();
+</script>
+</body>
+</html>
