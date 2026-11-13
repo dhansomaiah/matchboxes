@@ -88,7 +88,8 @@
   .bead { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); }
   .picked .bead { background: var(--orange); }
   .picked::before { content: ""; position: absolute; inset: 4px; border: 1.5px solid var(--orange); border-radius: 10px; }
-  .count { position: absolute; right: 4px; bottom: 1px; font: 11px var(--mono); color: var(--ink-2); }
+  .count { position: absolute; left: 0; right: 0; bottom: 12px; text-align: center; font: 11px var(--mono); color: var(--ink-2); }
+  .beads:has(+ .count) { margin-bottom: 18px; }
   .none { font: 11px var(--mono); color: var(--ink-3); }
   .waiting { color: var(--ink-3); font-size: 15px; grid-column: 1 / -1; }
 
@@ -189,13 +190,15 @@
       <span><b id="t-lost">0</b>you won</span>
       <span><b id="t-drew">0</b>drawn</span>
       <span><b id="t-won">0</b>it won</span>
+      <span><b id="t-practice">0</b>practice games in its head</span>
     </div>
   </section>
 
   <section class="how">
     <h2>How it works</h2>
-    <p>There is no strategy in the code. When it wins, every move it made gets three more beads. A draw earns one. When it loses, the bead it used in each box is taken away, so that move gets a little less likely next time.</p>
-    <p>Donald Michie built the original in 1961 out of 304 real matchboxes, because he had no computer to hand. Its memory here lives in your browser, so it only ever learns from you.</p>
+    <p>There is no strategy in the code. A win puts three more beads behind every move it made, and a draw puts one. When it loses, the move that let you win is thrown out of its box for good, so it never loses the same way twice.</p>
+    <p>It also remembers the squares you chose. Between games it plays a thousand practice games in its head against that memory of you, which is why it improves after a handful of games and not a few hundred.</p>
+    <p>Donald Michie built the original in 1961 out of 304 real matchboxes, because he had no computer to hand. Everything here is kept in your browser, so it only ever learns from you.</p>
   </section>
 </main>
 
@@ -205,7 +208,8 @@
   const E = Matchboxes;
   const BOXES = E.allBoxes();
   const BY_KEY = new Map(BOXES.map((b) => [b.key, b]));
-  const STORE = "matchboxes-v1";
+  const STORE = "matchboxes-v2";
+  const PRACTICE = 1000;
   const ORDINAL = ["first", "second", "third", "fourth"];
   const $ = (id) => document.getElementById(id);
 
@@ -213,7 +217,7 @@
   const X_SVG = '<svg viewBox="0 0 60 60" aria-hidden="true"><path class="x" d="M11 11 49 49M49 11 11 49"/></svg>';
   const PLACES = ["top left", "top middle", "top right", "middle left", "centre", "middle right", "bottom left", "bottom middle", "bottom right"];
 
-  let memory, record, board, opened, over, yours, lastCell, winLine, peekKey, timer;
+  let memory, ghost, record, board, opened, over, yours, lastCell, winLine, peekKey, timer;
 
   function fresh() {
     const m = {};
@@ -224,16 +228,16 @@
     try {
       const saved = JSON.parse(localStorage.getItem(STORE));
       if (saved && saved.memory && BOXES.every((b) => saved.memory[b.key])) {
-        memory = saved.memory; record = saved.record || []; return;
+        memory = saved.memory; ghost = saved.ghost || {}; record = saved.record || []; return;
       }
     } catch (e) { /* no storage: it just forgets when you leave */ }
-    memory = fresh(); record = [];
+    memory = fresh(); ghost = {}; record = [];
   }
   function save() {
-    try { localStorage.setItem(STORE, JSON.stringify({ memory, record })); } catch (e) {}
+    try { localStorage.setItem(STORE, JSON.stringify({ memory, ghost, record })); } catch (e) {}
   }
 
-  const total = (beads) => Object.values(beads).reduce((a, n) => a + n, 0);
+  const total = E.total;
 
   function say(line, why) { $("say").textContent = line; $("why").textContent = why || ""; }
 
@@ -267,6 +271,7 @@
   function you(cell) {
     if (over || !yours || board[cell] !== ".") return;
     yours = false; lastCell = cell;
+    E.remember(ghost, board, cell);
     board = E.put(board, cell, "X");
     if (E.winner(board)) return finish("loss");
     say("It is choosing", "");
@@ -278,21 +283,26 @@
     over = true; yours = false;
     const w = E.winner(board);
     winLine = w ? w.line : null;
+    const before = opened.map((o) => memory[o.key][o.move]);
     E.learn(memory, opened, result);
-    for (const o of opened) o.result = result;
+    opened.forEach((o, i) => {
+      o.beads = Object.assign({}, memory[o.key]);
+      o.delta = o.beads[o.move] - before[i];
+      o.done = true;
+    });
+    // Then it plays practice games in its head against its memory of how you move.
+    for (let i = 0; i < PRACTICE; i++) E.rehearse(memory, ghost);
     const n = opened.length;
     const boxes = n === 1 ? "the one box" : "each of the " + n + " boxes";
+    const after = " Then it played " + PRACTICE.toLocaleString("en") + " practice games against its memory of you.";
     if (gaveUp) {
-      // The box for this position has no beads left. It resigns, and the box is restocked.
-      const key = E.canon(board).key;
-      memory[key] = E.freshBeads(BY_KEY.get(key));
-      say("It gave up", "The box for this position was empty, so it had no move to make. The bead it used in " + boxes + " before that is gone, and the empty box is refilled.");
+      say("It gave up", "Every move from this position is one it knows loses, so the box was empty." + after);
     } else if (result === "loss") {
-      say("You won", "The bead it used in " + boxes + " it opened is taken away.");
+      say("You won", "The move that let you win is gone from its box for good." + after);
     } else if (result === "win") {
-      say("It won", "Three more beads for the move it made in " + boxes + " it opened.");
+      say("It won", "Three more beads for the move it made in " + boxes + " it opened." + after);
     } else {
-      say("A draw", "One more bead for the move it made in " + boxes + " it opened.");
+      say("A draw", "One more bead for the move it made in " + boxes + " it opened." + after);
     }
     record.push(result === "win" ? "w" : result === "draw" ? "d" : "l");
     save();
@@ -321,8 +331,8 @@
   }
 
   // A small board with the beads for one box. k is how the box is turned to match the real game.
-  function mini(key, k, pickedMove) {
-    const beads = memory[key];
+  function mini(key, k, pickedMove, beads) {
+    beads = beads || memory[key];
     const cells = new Array(9).fill("");
     for (let c = 0; c < 9; c++) {
       const real = E.SYM[k][c];
@@ -331,10 +341,10 @@
       else if (beads[c] === undefined) cells[real] = "<div></div>";
       else {
         const n = beads[c];
-        const dots = '<i class="bead"></i>'.repeat(Math.min(n, 15));
+        const dots = '<i class="bead"></i>'.repeat(n > 15 ? 5 : n);
         cells[real] = '<div class="' + (c === pickedMove ? "picked" : "") + '">' +
           (n === 0 ? '<span class="none">0</span>' : '<div class="beads">' + dots + "</div>") +
-          (n > 15 ? '<span class="count">' + n + "</span>" : "") + "</div>";
+          (n > 15 ? '<span class="count">' + n.toLocaleString("en") + "</span>" : "") + "</div>";
       }
     }
     return '<div class="mini">' + cells.join("") + "</div>";
@@ -344,11 +354,12 @@
     const el = $("opened");
     if (!opened.length) { el.innerHTML = '<p class="waiting">None yet.</p>'; return; }
     el.innerHTML = opened.map((o, i) => {
-      const d = o.result ? E.REWARD[o.result] : 0;
-      const delta = !o.result ? "" :
-        '<span class="fig ' + (d > 0 ? "gain" : "lose") + '">' + (d > 0 ? "+" + d : "−" + -d) + "</span>";
+      const d = o.delta;
+      const delta = !o.done ? "" : o.beads[o.move] === 0 ?
+        '<span class="lose">Never again</span>' :
+        '<span class="fig ' + (d > 0 ? "gain" : "lose") + '">' + (d > 0 ? "+" + d : d < 0 ? "\u2212" + -d : "0") + "</span>";
       return '<div class="box"><div class="label"><span>Its ' + ORDINAL[i] + " move</span>" + delta + "</div>" +
-        mini(o.key, o.k, o.move) + "</div>";
+        mini(o.key, o.k, o.move, o.beads) + "</div>";
     }).join("");
   }
 
@@ -383,7 +394,8 @@
     const was = box.moves.length * E.START[box.stage];
     const change = now === was ? "It has not learned anything here yet." :
       now > was ? "It started with " + was + ", so things have gone well from here." :
-      "It started with " + was + ", so it has lost from here.";
+      now === 0 ? "Every move from here is one it knows loses, so it steers away from this position." :
+      "It started with " + was + ". A square with 0 is a move it will not make again.";
     el.hidden = false;
     el.innerHTML = mini(peekKey, 0, -1) +
       '<p class="note">A position it can face on its ' + ORDINAL[box.stage] + ' move. This box holds <span class="fig">' + now + "</span> " +
@@ -396,6 +408,7 @@
     $("t-won").textContent = record.filter((r) => r === "w").length;
     $("t-drew").textContent = record.filter((r) => r === "d").length;
     $("t-lost").textContent = record.filter((r) => r === "l").length;
+    $("t-practice").textContent = (record.length * PRACTICE).toLocaleString("en");
     $("forget").hidden = record.length === 0;
   }
 
@@ -409,7 +422,7 @@
     drawShelf(); drawPeek();
   });
   $("forget").addEventListener("click", () => {
-    memory = fresh(); record = []; peekKey = null; save(); start();
+    memory = fresh(); ghost = {}; record = []; peekKey = null; save(); start();
   });
 
   load();
